@@ -21,8 +21,6 @@
 
 
 
-
-
 import argparse
 import torch
 import torch.nn as nn
@@ -36,12 +34,13 @@ import sys
 import pickle as pickle
 import pdb
 import time
+import logging
 
 
-PATTERNSIZE = 1000
+PATTERNSIZE = 100
 NBNEUR = PATTERNSIZE+1  # NbNeur = Pattern Size + 1 "bias", fixed-output neuron (bias neuron not needed for this task, but included for completeness)
 #ETA = .01               # The "learning rate" of plastic connections - we actually learn it
-ADAMLEARNINGRATE =3e-4  # The learning rate of the Adam optimizer 
+ADAMLEARNINGRATE =3e-4  # The learning rate of the Adam optimizer
 RNGSEED = 0             # Initial random seed - can be modified by passing a number as command-line argument
 
 # Note that these patterns are likely not optimal
@@ -60,12 +59,18 @@ if len(sys.argv) == 2:
 np.set_printoptions(precision=3)
 np.random.seed(RNGSEED); random.seed(RNGSEED); torch.manual_seed(RNGSEED)
 
-ITNS = 2500
+ITNS = 1000
 BPIT = True
 LOAD_PARAMS_FROM_DISK = False
+SPARSITY = 0.5    # fractional sparsity e.g. 0.5 = 0.5 active,   0.2 = 0.8 active
 
-#ttype = torch.FloatTensor;         # For CPU
-ttype = torch.cuda.FloatTensor;     # For GPU
+print_every = 10
+
+dbug_pickle = False
+dbug_bp = False
+
+ttype = torch.FloatTensor;         # For CPU
+# ttype = torch.cuda.FloatTensor;     # For GPU
 
 
 def zero_if_less_than(x, eps):
@@ -76,12 +81,14 @@ def zero_if_less_than(x, eps):
         return x
 
 
-# Generate the full list of inputs for an episode. The inputs are returned as a PyTorch tensor of shape NbSteps x 1 x NbNeur
+# Generate the full list of inputs for an episode.
+# The inputs are returned as a PyTorch tensor of shape NbSteps x 1 x NbNeur
 def generateInputsAndTarget():
     inputT = np.zeros((NBSTEPS, 1, NBNEUR)) #inputTensor, initially in numpy format...
 
     # Create the random patterns to be memorized in an episode
-    seedp = np.ones(PATTERNSIZE); seedp[:PATTERNSIZE//2] = -1
+    length_sparse = int(PATTERNSIZE * SPARSITY)
+    seedp = np.ones(PATTERNSIZE); seedp[:length_sparse] = 0
     patterns=[]
     for nump in range(NBPATTERNS):
         p = np.random.permutation(seedp)
@@ -93,6 +100,9 @@ def generateInputsAndTarget():
     preservedbits = np.ones(PATTERNSIZE); preservedbits[:int(PROBADEGRADE * PATTERNSIZE)] = 0; np.random.shuffle(preservedbits)
     degradedtestpattern = testpattern * preservedbits
 
+    logging.debug("test pattern     = ", testpattern)
+    logging.debug("degraded pattern = ", degradedtestpattern)
+
     # Inserting the inputs in the input tensor at the proper places
     for nc in range(NBPRESCYCLES):
         np.random.shuffle(patterns)
@@ -103,6 +113,7 @@ def generateInputsAndTarget():
 
     # Inserting the degraded pattern
     for nn in range(PRESTIMETEST):
+        logging.debug("insert degraded pattern at: [{0},{1},:{2}]".format(-PRESTIMETEST + nn, 0, PATTERNSIZE))
         inputT[-PRESTIMETEST + nn][0][:PATTERNSIZE] = degradedtestpattern[:]
 
     for nn in range(NBSTEPS):
@@ -111,8 +122,9 @@ def generateInputsAndTarget():
     inputT = torch.from_numpy(inputT).type(ttype)  # Convert from numpy to Tensor
     target = torch.from_numpy(testpattern).type(ttype)
 
-    return inputT, target
+    logging.debug("shape of inputT: ", np.shape(inputT))
 
+    return inputT, target
 
 
 class NETWORK(nn.Module):
@@ -128,12 +140,11 @@ class NETWORK(nn.Module):
             self.alpha_default = 0.02
             self.eta_default = 0.01
 
-        # Notice that the vectors are row vectors, and the matrices are transposed wrt the usual order, following apparent pytorch conventions
-        # Each *column* of w targets a single output neuron
+        # Notice that the vectors are row vectors, and the matrices are transposed wrt the usual order, following
+        # apparent pytorch conventions Each *column* of w targets a single output neuron
         self.w = Variable(self.w_default * torch.randn(NBNEUR, NBNEUR).type(ttype), requires_grad=True)   # The matrix of fixed (baseline) weights
         self.alpha = Variable(self.alpha_default * torch.randn(NBNEUR, NBNEUR).type(ttype), requires_grad=True)  # The matrix of plasticity coefficients
         self.eta = Variable(self.eta_default * torch.ones(1).type(ttype), requires_grad=True)  # The weight decay term / "learning rate" of plasticity - trainable, but shared across all connections
-
 
     def forward(self, input, yin, hebb):
         # Run the network for one timestep
@@ -153,13 +164,12 @@ class NETWORK(nn.Module):
 net = NETWORK()
 optimizer = torch.optim.Adam([net.w, net.alpha, net.eta], lr=ADAMLEARNINGRATE)
 total_loss = 0.0; all_losses = []
-print_every = 100
 nowtime = time.time()
 
 
 # override defaults if loading from disk
 if LOAD_PARAMS_FROM_DISK:
-  fn = './results_base/output_simple_0.dat'
+  fn = './results/output_simple_0.dat'
   with open(fn, 'rb') as fo:
     myw = pickle.load(fo)
     myalpha = pickle.load(fo)
@@ -170,6 +180,15 @@ if LOAD_PARAMS_FROM_DISK:
     net.w.data = torch.from_numpy(myw).type(ttype)
     net.alpha.data = torch.from_numpy(myalpha).type(ttype)
     net.eta.data = torch.from_numpy(myeta).type(ttype)
+
+    if dbug_pickle:
+        print("loading w: ", myw)
+        print("loading alpha: ", myalpha)
+        print("loading eta: ", myeta)
+
+    for numiter in range(ITNS):
+        generateInputsAndTarget()
+
 
 for numiter in range(ITNS):
 
@@ -188,6 +207,7 @@ for numiter in range(ITNS):
     # Compute loss for this episode (last step only)
     loss = (y[0][:PATTERNSIZE] - Variable(target, requires_grad=False)).pow(2).sum()
 
+    dbug_pickle = False
     dbug_bp = False
     if dbug_bp:
         print("NBSTEPS = ", NBSTEPS)
@@ -210,18 +230,18 @@ for numiter in range(ITNS):
     # Print statistics, save files
     #lossnum = loss.data[0]   # Saved loss is the actual learning loss (MSE)
     to = target.cpu().numpy(); yo = y.data.cpu().numpy()[0][:PATTERNSIZE]; z = (np.sign(yo) != np.sign(to)); lossnum = np.mean(z)  # Saved loss is the error rate
-    
+
     total_loss  += lossnum
     if (numiter+1) % print_every == 0:
         print((numiter, "===="))
-        print(target.cpu().numpy()[-10:])   # Target pattern to be reconstructed
-        print(inputs.cpu().numpy()[numstep][0][-10:])  # Last input contains the degraded pattern fed to the network at test time
-        print(y.data.cpu().numpy()[0][-10:])   # Final output of the network
+        print("T", target.cpu().numpy()[-10:])   # Target pattern to be reconstructed
+        print("I", inputs.cpu().numpy()[numstep][0][-11:])  # Last input contains the degraded pattern fed to the network at test time (last num is bias neuron)
+        print("Y", y.data.cpu().numpy()[0][-11:])   # Final output of the network
 
-        diff = y.data.cpu().numpy()[0][-10:] - target.cpu().numpy()[-10:]
+        diff = y.data.cpu().numpy()[0][:PATTERNSIZE] - target.cpu().numpy()[:]
         vfunc = np.vectorize(zero_if_less_than)
         vfunc(diff, 0.01)
-        print(diff)
+        print("D", diff[-10:])
 
         previoustime = nowtime
         nowtime = time.time()
@@ -230,13 +250,19 @@ for numiter in range(ITNS):
         all_losses.append(total_loss)
         print("Mean loss over last", print_every, "iters:", total_loss)
         print("")
-        with open('output_simple_'+str(RNGSEED)+'.dat', 'wb') as fo:
+        with open('./results/output_simple_'+str(RNGSEED)+'.dat', 'wb') as fo:
             pickle.dump(net.w.data.cpu().numpy(), fo)
             pickle.dump(net.alpha.data.cpu().numpy(), fo)
             pickle.dump(y.data.cpu().numpy(), fo)  # The final y for this episode
             pickle.dump(all_losses, fo)
             pickle.dump(net.eta.data.cpu().numpy(), fo)
-        with open('loss_simple_'+str(RNGSEED)+'.txt', 'w') as fo:
+
+            if dbug_pickle:
+                print("save w: ", net.w.data)
+                print("save alpha: ", net.alpha.data)
+                print("save eta: ", net.eta.data)
+
+        with open('./results/loss_simple_'+str(RNGSEED)+'.txt', 'w') as fo:
             for item in all_losses:
                 fo.write("%s\n" % item)
         total_loss = 0
