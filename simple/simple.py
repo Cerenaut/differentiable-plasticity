@@ -88,7 +88,7 @@ def generateInputsAndTarget():
 
     # Create the random patterns to be memorized in an episode
     length_sparse = int(PATTERNSIZE * SPARSITY)
-    seedp = np.ones(PATTERNSIZE); seedp[:length_sparse] = 0
+    seedp = np.ones(PATTERNSIZE); seedp[:length_sparse] = -1
     patterns=[]
     for nump in range(NBPATTERNS):
         p = np.random.permutation(seedp)
@@ -123,6 +123,7 @@ def generateInputsAndTarget():
     target = torch.from_numpy(testpattern).type(ttype)
 
     logging.debug("shape of inputT: ", np.shape(inputT))
+    logging.debug("shape of target: ", np.shape(target))
 
     return inputT, target
 
@@ -231,7 +232,7 @@ for numiter in range(ITNS):
     #lossnum = loss.data[0]   # Saved loss is the actual learning loss (MSE)
     to = target.cpu().numpy(); yo = y.data.cpu().numpy()[0][:PATTERNSIZE]; z = (np.sign(yo) != np.sign(to)); lossnum = np.mean(z)  # Saved loss is the error rate
 
-    total_loss  += lossnum
+    total_loss += lossnum
     if (numiter+1) % print_every == 0:
         print((numiter, "===="))
         print("T", target.cpu().numpy()[-10:])   # Target pattern to be reconstructed
