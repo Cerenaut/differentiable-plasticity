@@ -37,7 +37,7 @@ import time
 import logging
 
 
-PATTERNSIZE = 100
+PATTERNSIZE = 1000
 NBNEUR = PATTERNSIZE+1  # NbNeur = Pattern Size + 1 "bias", fixed-output neuron (bias neuron not needed for this task, but included for completeness)
 #ETA = .01               # The "learning rate" of plastic connections - we actually learn it
 ADAMLEARNINGRATE =3e-4  # The learning rate of the Adam optimizer
@@ -52,7 +52,6 @@ PRESTIMETEST = 6        # Same thing but for the final test pattern
 INTERPRESDELAY = 4      # Duration of zero-input interval between presentations
 NBSTEPS = NBPRESCYCLES * ((PRESTIME + INTERPRESDELAY) * NBPATTERNS) + PRESTIMETEST  # Total number of steps per episode
 
-
 if len(sys.argv) == 2:
     RNGSEED = int(sys.argv[1])
     print("Setting RNGSEED to "+str(RNGSEED))
@@ -64,7 +63,7 @@ BPIT = True
 LOAD_PARAMS_FROM_DISK = False
 SPARSITY = 0.5    # fractional sparsity e.g. 0.5 = 0.5 active,   0.2 = 0.8 active
 
-print_every = 10
+print_every = 1
 
 dbug_pickle = False
 dbug_bp = False
@@ -149,7 +148,7 @@ class NETWORK(nn.Module):
 
     def forward(self, input, yin, hebb):
         # Run the network for one timestep
-        yout = F.tanh( yin.mm(self.w + torch.mul(self.alpha, hebb)) + input )
+        yout = F.tanh(yin.mm(self.w + torch.mul(self.alpha, hebb)) + input)
         hebb = (1 - self.eta) * hebb + self.eta * torch.bmm(yin.unsqueeze(2), yout.unsqueeze(1))[0] # bmm here is used to implement an outer product between yin and yout, with the help of unsqueeze (i.e. added empty dimensions)
         return yout, hebb
 
@@ -165,8 +164,8 @@ class NETWORK(nn.Module):
 net = NETWORK()
 optimizer = torch.optim.Adam([net.w, net.alpha, net.eta], lr=ADAMLEARNINGRATE)
 total_loss = 0.0; all_losses = []
+total_real_loss = 0.0; all_real_losses = []
 nowtime = time.time()
-
 
 # override defaults if loading from disk
 if LOAD_PARAMS_FROM_DISK:
@@ -190,6 +189,12 @@ if LOAD_PARAMS_FROM_DISK:
     for numiter in range(ITNS):
         generateInputsAndTarget()
 
+
+print("----------------------------------")
+print("Size of episode = " + str(NBSTEPS))
+print("Number of episodes = " + str(ITNS))
+print("Size of vector = " + str(PATTERNSIZE))
+print("Random seed = " + str(RNGSEED))
 
 for numiter in range(ITNS):
 
@@ -230,26 +235,32 @@ for numiter in range(ITNS):
     # That's it for the actual algorithm!
     # Print statistics, save files
     #lossnum = loss.data[0]   # Saved loss is the actual learning loss (MSE)
-    to = target.cpu().numpy(); yo = y.data.cpu().numpy()[0][:PATTERNSIZE]; z = (np.sign(yo) != np.sign(to)); lossnum = np.mean(z)  # Saved loss is the error rate
+    to = target.cpu().numpy()
+    yo = y.data.cpu().numpy()[0][:PATTERNSIZE]
+    z = (np.sign(yo) != np.sign(to))
+    lossnum = np.mean(z)  # Saved loss is the error rate
 
     total_loss += lossnum
+    total_real_loss += loss.data.cpu().numpy()
     if (numiter+1) % print_every == 0:
         print((numiter, "===="))
-        print("T", target.cpu().numpy()[-10:])   # Target pattern to be reconstructed
-        print("I", inputs.cpu().numpy()[numstep][0][-11:])  # Last input contains the degraded pattern fed to the network at test time (last num is bias neuron)
-        print("Y", y.data.cpu().numpy()[0][-11:])   # Final output of the network
+        print("T", target.cpu().numpy()[:10])   # Target pattern to be reconstructed
+        print("I", inputs.cpu().numpy()[numstep][0][:10])  # Last input contains the degraded pattern fed to the network at test time (last num is bias neuron)
+        print("Y", y.data.cpu().numpy()[0][:10])   # Final output of the network
 
         diff = y.data.cpu().numpy()[0][:PATTERNSIZE] - target.cpu().numpy()[:]
         vfunc = np.vectorize(zero_if_less_than)
         vfunc(diff, 0.01)
-        print("D", diff[-10:])
+        print("D", diff[:10])
 
         previoustime = nowtime
         nowtime = time.time()
         print("Time spent on last", print_every, "iters: ", nowtime - previoustime)
         total_loss /= print_every
         all_losses.append(total_loss)
+        all_real_losses.append(total_real_loss)
         print("Mean loss over last", print_every, "iters:", total_loss)
+        print("loss (MSE)", total_real_loss)
         print("")
         with open('./results/output_simple_'+str(RNGSEED)+'.dat', 'wb') as fo:
             pickle.dump(net.w.data.cpu().numpy(), fo)
@@ -267,6 +278,11 @@ for numiter in range(ITNS):
             for item in all_losses:
                 fo.write("%s\n" % item)
         total_loss = 0
+        total_real_loss = 0
+
+        with open('./results/loss_real_simple_'+str(RNGSEED)+'.txt', 'w') as fo:
+            for item in all_real_losses:
+                fo.write("%s\n" % item)
 
 
 
