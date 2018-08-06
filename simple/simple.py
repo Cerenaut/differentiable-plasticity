@@ -40,7 +40,7 @@ import logging
 PATTERNSIZE = 1000
 NBNEUR = PATTERNSIZE+1  # NbNeur = Pattern Size + 1 "bias", fixed-output neuron (bias neuron not needed for this task, but included for completeness)
 #ETA = .01               # The "learning rate" of plastic connections - we actually learn it
-ADAMLEARNINGRATE =3e-4  # The learning rate of the Adam optimizer
+ADAMLEARNINGRATE = 3e-4  # The learning rate of the Adam optimizer
 RNGSEED = 0             # Initial random seed - can be modified by passing a number as command-line argument
 
 # Note that these patterns are likely not optimal
@@ -51,6 +51,7 @@ PRESTIME = 6            # Number of time steps for each presentation
 PRESTIMETEST = 6        # Same thing but for the final test pattern
 INTERPRESDELAY = 4      # Duration of zero-input interval between presentations
 NBSTEPS = NBPRESCYCLES * ((PRESTIME + INTERPRESDELAY) * NBPATTERNS) + PRESTIMETEST  # Total number of steps per episode
+
 
 if len(sys.argv) == 2:
     RNGSEED = int(sys.argv[1])
@@ -63,13 +64,16 @@ BPIT = True
 LOAD_PARAMS_FROM_DISK = False
 SPARSITY = 0.5    # fractional sparsity e.g. 0.5 = 0.5 active,   0.2 = 0.8 active
 
-print_every = 1
+MIN_BIT_VALUE = -1
+DEGRADE_VALUE = 0   # because the input is amplified, anything other than 0 has a similar effect i.e. still ends up being greater than 1 or less than -1
+
+print_every = 10
 
 dbug_pickle = False
 dbug_bp = False
 
-ttype = torch.FloatTensor;         # For CPU
-# ttype = torch.cuda.FloatTensor;     # For GPU
+# ttype = torch.FloatTensor;         # For CPU
+ttype = torch.cuda.FloatTensor;     # For GPU
 
 
 def zero_if_less_than(x, eps):
@@ -87,7 +91,7 @@ def generateInputsAndTarget():
 
     # Create the random patterns to be memorized in an episode
     length_sparse = int(PATTERNSIZE * SPARSITY)
-    seedp = np.ones(PATTERNSIZE); seedp[:length_sparse] = -1
+    seedp = np.ones(PATTERNSIZE); seedp[:length_sparse] = MIN_BIT_VALUE
     patterns=[]
     for nump in range(NBPATTERNS):
         p = np.random.permutation(seedp)
@@ -96,7 +100,7 @@ def generateInputsAndTarget():
     # Now 'patterns' contains the NBPATTERNS patterns to be memorized in this episode - in numpy format
     # Choosing the test pattern, partially zero'ed out, that the network will have to complete
     testpattern = random.choice(patterns).copy()
-    preservedbits = np.ones(PATTERNSIZE); preservedbits[:int(PROBADEGRADE * PATTERNSIZE)] = 0; np.random.shuffle(preservedbits)
+    preservedbits = np.ones(PATTERNSIZE); preservedbits[:int(PROBADEGRADE * PATTERNSIZE)] = DEGRADE_VALUE; np.random.shuffle(preservedbits)
     degradedtestpattern = testpattern * preservedbits
 
     logging.debug("test pattern     = ", testpattern)
@@ -169,7 +173,7 @@ nowtime = time.time()
 
 # override defaults if loading from disk
 if LOAD_PARAMS_FROM_DISK:
-  fn = './results/output_simple_0.dat'
+  fn = './results/output_simple_base.dat'
   with open(fn, 'rb') as fo:
     myw = pickle.load(fo)
     myalpha = pickle.load(fo)
@@ -196,12 +200,18 @@ print("Number of episodes = " + str(ITNS))
 print("Size of vector = " + str(PATTERNSIZE))
 print("Random seed = " + str(RNGSEED))
 
+init_net = False
 for numiter in range(ITNS):
 
+    print("iter: ", numiter)
+
     # Initialize network for each episode
-    y = net.initialZeroState()
-    hebb = net.initialZeroHebb()
-    optimizer.zero_grad()
+    if not init_net:
+        y = net.initialZeroState()
+        hebb = net.initialZeroHebb()
+        init_net = True
+    if BPIT:
+        optimizer.zero_grad()
 
     # Generate the inputs and target pattern for this episode
     inputs, target = generateInputsAndTarget()

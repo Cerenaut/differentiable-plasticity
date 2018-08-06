@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="93882e77-f61b-430b-a923-68b23a537033" name="Default" comment="">
-      <change beforePath="$PROJECT_DIR$/simple/output_simple_0.dat" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/simple/simple.py" beforeDir="false" afterPath="$PROJECT_DIR$/simple/simple.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -46,8 +46,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/simple/simple.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="56">
-              <caret line="122" lean-forward="true" selection-start-line="122" selection-end-line="122" />
+            <state relative-caret-position="148">
+              <caret line="68" column="7" selection-start-line="68" selection-start-column="7" selection-end-line="68" selection-end-column="7" />
               <folding>
                 <element signature="e#1039#1054#0" expanded="true" />
               </folding>
@@ -109,6 +109,7 @@
       <find>epoch</find>
       <find>sign</find>
       <find>RNGSEED</find>
+      <find>MIN_BIT</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -262,7 +263,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/simple/simple.py</url>
-          <line>262</line>
+          <line>282</line>
           <option name="timeStamp" value="5" />
         </line-breakpoint>
       </breakpoints>
@@ -316,8 +317,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/simple/simple.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="56">
-          <caret line="122" lean-forward="true" selection-start-line="122" selection-end-line="122" />
+        <state relative-caret-position="148">
+          <caret line="68" column="7" selection-start-line="68" selection-start-column="7" selection-end-line="68" selection-end-column="7" />
           <folding>
             <element signature="e#1039#1054#0" expanded="true" />
           </folding>
