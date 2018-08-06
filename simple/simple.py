@@ -59,7 +59,7 @@ if len(sys.argv) == 2:
 np.set_printoptions(precision=3)
 np.random.seed(RNGSEED); random.seed(RNGSEED); torch.manual_seed(RNGSEED)
 
-ITNS = 1000
+ITNS = 2000
 BPIT = True
 LOAD_PARAMS_FROM_DISK = False
 SPARSITY = 0.5    # fractional sparsity e.g. 0.5 = 0.5 active,   0.2 = 0.8 active
